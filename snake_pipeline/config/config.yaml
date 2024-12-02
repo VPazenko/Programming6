@@ -1,0 +1,15 @@
+models: ["random_forest", "SVM"]
+valuable_db: ['BioGrid', 'STRING', 'ReMap', 'CisTarget', 'PCA']
+
+output_dir: "results/" 
+inter_data: 'intermediate_data/'
+data: 'initial_data/'
+
+eQTL_file_name: 'CisTransColorResultsV3.txt'
+
+BioGrid_db_name: ['initial_data/biogrid.csv']
+STRING_db_name: ['initial_data/STRING_gene_links.csv']
+ReMap_db_name: ['initial_data/transcription_factor_gene_bindings.csv']
+CisTarget_db_name: ['initial_data/hg38_10kbp_up_10kbp_down_full_tx_v10_clust.genes_vs_motifs.scores.feather', 
+                  'initial_data/motifs-v10nr_clust-nr.hgnc-m0.001-o0.0.tbl.txt']
+PCA_db_name: ['initial_data/EigenvectorsTop100.txt']
