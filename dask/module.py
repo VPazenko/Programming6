@@ -4,6 +4,7 @@ __author__ = "V.Pazenko"
 __version__ = 1.0
 
 
+import matplotlib.pyplot as plt
 import dask.dataframe as dd
 import pandas as pd
 import dask
@@ -77,7 +78,7 @@ def initial_preprocessing_pd(log, df_clin):
         if len(list(df_clin[name].value_counts())) == 1:
             remove_list.append(name)
     # Delete all these columns
-    print(remove_list)
+    # print(remove_list)
     for  name in remove_list:
         del df_clin[name]
     # These columns are duplicates with 'title'
@@ -85,11 +86,50 @@ def initial_preprocessing_pd(log, df_clin):
     del df_clin['CEL.file']
 
     df_clin.iloc[3,4] = round(df_clin[df_clin['characteristics.tag.gender']=='M']['characteristics.tag.tumor.size.maximumdiameter'].mean(), 2)
-    
+    for col in ['characteristics.tag.stage.primary.tumor', 'characteristics.tag.stage.nodes', 'characteristics.tag.stage.mets']:
+        df_clin.loc[:,col] = df_clin.loc[:,col].str.lower()
     # End timer
     preprocess_time = time.time() - start
 
     log.info(f"2. Pandas preprocessing time: {preprocess_time:.2f} seconds")
 
     return df_clin
+
+
+
+
+def data_exploration_pandas(log, df_clin, df_exp):
+    # Start timer
+    start = time.time()
+    df_exp = df_exp.set_index('!Sample_title')
+    df_exp = df_exp.T
+    list_std = list(df_exp.agg("std"))
+    df_exp.loc['std'] = list_std
+    # sort by std (max is first)
+    df_exp = df_exp.sort_values(by='std', axis=1, ascending=False)
+
+    df_clin = df_clin.set_index('title')
+    df_combined = df_clin.merge(df_exp.iloc[:,0:10], how='left', left_index=True, right_index=True)
+    df_combined["TumorSubtype"] = df_combined["characteristics.tag.histology"].str.contains("Squamous", case=False, na=False).astype(int)
+    del df_combined["characteristics.tag.histology"]
+
+    plot_tumor_distribution(df_combined, "TumorSubtype", name='pandas')
+    # End timer
+    exploration_time = time.time() - start
+
+    log.info(f"3. Pandas data exploration time: {exploration_time:.2f} seconds")
+    return df_combined
+
+
+def plot_tumor_distribution(df, column, name='pandas'):
+    if not os.path.exists("plots"):
+        os.makedirs("plots")
+    counts = df[column].value_counts() #.compute()
+    counts.plot(kind="bar", color="skyblue", edgecolor="black")
+    plt.xlabel(column)
+    plt.ylabel("Count")
+    plt.title(f"Distribution of {column}")
+    plt.xticks(rotation=0)
+
+    plt.savefig(f"plots/{column}_distribution_{name}.png")
 
