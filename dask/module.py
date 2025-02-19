@@ -68,4 +68,28 @@ def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="da
     return df_clin, df_exp
 
 
+def initial_preprocessing_pd(log, df_clin):
+    # Start timer
+    start = time.time()
+    # Remove columns with only one unique value
+    remove_list = []
+    for name in list(df_clin.columns):
+        if len(list(df_clin[name].value_counts())) == 1:
+            remove_list.append(name)
+    # Delete all these columns
+    print(remove_list)
+    for  name in remove_list:
+        del df_clin[name]
+    # These columns are duplicates with 'title'
+    del df_clin['sample.name']
+    del df_clin['CEL.file']
+
+    df_clin.iloc[3,4] = round(df_clin[df_clin['characteristics.tag.gender']=='M']['characteristics.tag.tumor.size.maximumdiameter'].mean(), 2)
+    
+    # End timer
+    preprocess_time = time.time() - start
+
+    log.info(f"2. Pandas preprocessing time: {preprocess_time:.2f} seconds")
+
+    return df_clin
 
