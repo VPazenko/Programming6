@@ -113,15 +113,19 @@ def data_exploration_pandas(log, df_clin, df_exp):
     df_combined["TumorSubtype"] = df_combined["characteristics.tag.histology"].str.contains("Squamous", case=False, na=False).astype(int)
     del df_combined["characteristics.tag.histology"]
 
-    plot_tumor_distribution(df_combined, "TumorSubtype", name='pandas')
+    last_10_columns = df_combined.columns[-11:-1]
+    grouped_df = df_combined.groupby("TumorSubtype")[last_10_columns].mean().reset_index()
+    # grouped_df.head()
+
+    plot_values_distribution(df_combined, "TumorSubtype", name='pandas')
     # End timer
     exploration_time = time.time() - start
 
     log.info(f"3. Pandas data exploration time: {exploration_time:.2f} seconds")
-    return df_combined
+    return df_combined, grouped_df
 
 
-def plot_tumor_distribution(df, column, name='pandas'):
+def plot_values_distribution(df, column, name='pandas'):
     if not os.path.exists("plots"):
         os.makedirs("plots")
     counts = df[column].value_counts() #.compute()
@@ -132,4 +136,6 @@ def plot_tumor_distribution(df, column, name='pandas'):
     plt.xticks(rotation=0)
 
     plt.savefig(f"plots/{column}_distribution_{name}.png")
+
+
 
