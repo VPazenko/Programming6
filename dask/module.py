@@ -11,6 +11,8 @@ import dask
 import time
 import gzip
 import os
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, roc_curve
+import xgboost as xgb
 
 
 def load_data_pd(log, metadata='data/Lung3.metadata.xlsx', expression_data="data/GSE58661_series_matrix.txt.gz"):
@@ -98,7 +100,7 @@ def initial_preprocessing_pd(log, df_clin):
 
 
 
-def data_exploration_pandas(log, df_clin, df_exp):
+def data_exploration_pd(log, df_clin, df_exp):
     # Start timer
     start = time.time()
     df_exp = df_exp.set_index('!Sample_title')
@@ -112,6 +114,9 @@ def data_exploration_pandas(log, df_clin, df_exp):
     df_combined = df_clin.merge(df_exp.iloc[:,0:10], how='left', left_index=True, right_index=True)
     df_combined["TumorSubtype"] = df_combined["characteristics.tag.histology"].str.contains("Squamous", case=False, na=False).astype(int)
     del df_combined["characteristics.tag.histology"]
+
+    # I suppose, that we can decrease number of variables in the primary stage column (because subtypes pt1a, pt1b, pt1c are similar)
+    df_combined['characteristics.tag.stage.primary.tumor'] = df_combined['characteristics.tag.stage.primary.tumor'].apply(lambda x: x[:3])
 
     last_10_columns = df_combined.columns[-11:-1]
     grouped_df = df_combined.groupby("TumorSubtype")[last_10_columns].mean().reset_index()
@@ -138,7 +143,7 @@ def plot_values_distribution(df, column, name='pandas'):
     plt.savefig(f"plots/{column}_distribution_{name}.png")
 
 
-def preprocessing_train_test_pandas(log, df_combined):
+def preprocessing_train_test_pd(log, df_combined):
     # Start timer
     start = time.time()
 
@@ -164,3 +169,48 @@ def preprocessing_train_test_pandas(log, df_combined):
 
     return X_train, X_test, y_train, y_test
 
+
+def modelling_XGBoost_pd(X_train, X_test, y_train, y_test):
+    # start timer
+    start = time.time()
+    # Convert Pandas data to DMatrix format for XGBoost
+    dtrain = xgb.DMatrix(X_train, label=y_train)
+    dtest = xgb.DMatrix(X_test, label=y_test)
+
+    # Train the model
+    model_pandas = xgb.train(params=None, dtrain=dtrain, num_boost_round=100)
+
+    # Predict on the test set
+    y_pred_pandas = model_pandas.predict(dtest)
+    y_pred_binary_pandas = (y_pred_pandas > 0.5).astype(int)
+
+    # Calculate metrics
+    accuracy_pandas = accuracy_score(y_test, y_pred_binary_pandas)
+    precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred_binary_pandas, average='binary')
+    auc_roc_pandas = roc_auc_score(y_test, y_pred_pandas)
+
+    end_time = time.time()
+    print(f"Training time (Pandas): {end_time - start_time:.2f} seconds")
+
+    # Print metrics for Pandas
+    print(f"Accuracy: {accuracy_pandas:.2f}")
+    print(f"Precision: {precision:.2f}")
+    print(f"Recall: {recall:.2f}")
+    print(f"F1-Score: {f1:.2f}")
+    print(f"AUC-ROC: {auc_roc_pandas:.2f}")
+    ROC_curve(y_test, y_pred_pandas)
+
+
+def ROC_curve(y_test, y_pred):
+    auc_score = roc_auc_score(y_test, y_pred)
+    print(f"AUC-ROC: {auc_score:.3f}")
+
+    # roc curve
+    fpr, tpr, _ = roc_curve(y_test, y_pred)
+    plt.plot(fpr, tpr, label=f"AUC = {auc_score:.3f}")
+    plt.plot([0, 1], [0, 1], linestyle="--", color="gray")  # 50% probability line
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend()
+    plt.show()
