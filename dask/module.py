@@ -3,7 +3,7 @@
 __author__ = "V.Pazenko"
 __version__ = 1.0
 
-
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import dask.dataframe as dd
 import pandas as pd
@@ -138,4 +138,29 @@ def plot_values_distribution(df, column, name='pandas'):
     plt.savefig(f"plots/{column}_distribution_{name}.png")
 
 
+def preprocessing_train_test_pandas(log, df_combined):
+    # Start timer
+    start = time.time()
+
+    X = df_combined.iloc[:,:-1]
+    cat_columns = df_combined.iloc[:,:-1].select_dtypes(include=['object']).columns
+    num_columns = df_combined.iloc[:,:-1].select_dtypes(include=['number']).columns
+    X = pd.get_dummies(X, columns = cat_columns, drop_first=True)
+    y = df_combined.iloc[:,-1]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+
+    # Do not leak data from test to train
+    mean = X_train[num_columns].mean()
+    std = X_train[num_columns].std()
+
+    # use z-score
+    X_train[num_columns] = (X_train[num_columns] - mean) / std
+    X_test[num_columns] = (X_test[num_columns] - mean) / std
+
+    # End timer
+    preprocess_time = time.time() - start
+
+    log.info(f"4. Pandas preprocessing time: {preprocess_time:.2f} seconds")
+
+    return X_train, X_test, y_train, y_test
 
