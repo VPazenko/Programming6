@@ -63,8 +63,8 @@ def initial_preprocessing_pd(log, df_clin):
 def data_exploration_pd(log, df_clin, df_exp):
     # Start timer
     start = time.time()
-    df_exp = df_exp.set_index('!Sample_title')
-    df_exp = df_exp.T
+    df_exp = df_exp.set_index('!Sample_title').T
+
     list_std = list(df_exp.agg("std"))
     df_exp.loc['std'] = list_std
     # sort by std (max is first)
@@ -132,13 +132,17 @@ def preprocessing_train_test_pd(log, df_combined):
 
 def modelling_XGBoost_pd(X_train, X_test, y_train, y_test):
     # start timer
-    start = time.time()
+    start_time = time.time()
     # Convert Pandas data to DMatrix format for XGBoost
     dtrain = xgb.DMatrix(X_train, label=y_train)
     dtest = xgb.DMatrix(X_test, label=y_test)
-
+    params = {
+        'objective': 'binary:logistic', 
+        'eval_metric': 'logloss', 
+        'use_label_encoder': False
+    }
     # Train the model
-    model_pandas = xgb.train(params=None, dtrain=dtrain, num_boost_round=100)
+    model_pandas = xgb.train(params=params, dtrain=dtrain, num_boost_round=100)
 
     # Predict on the test set
     y_pred_pandas = model_pandas.predict(dtest)
@@ -158,19 +162,17 @@ def modelling_XGBoost_pd(X_train, X_test, y_train, y_test):
     print(f"Recall: {recall:.2f}")
     print(f"F1-Score: {f1:.2f}")
     print(f"AUC-ROC: {auc_roc_pandas:.2f}")
-    ROC_curve(y_test, y_pred_pandas)
+    roc_curve(y_test, y_pred_pandas, auc_roc_pandas, name='pandas')
 
 
-def ROC_curve(y_test, y_pred):
-    auc_score = roc_auc_score(y_test, y_pred)
-    print(f"AUC-ROC: {auc_score:.3f}")
+def roc_curve(y_test, y_pred, auc_score, name='pandas'):
 
-    # roc curve
     fpr, tpr, _ = roc_curve(y_test, y_pred)
     plt.plot(fpr, tpr, label=f"AUC = {auc_score:.3f}")
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray")  # 50% probability line
     plt.xlabel("False Positive Rate")
     plt.ylabel("True Positive Rate")
-    plt.title("ROC Curve")
+    plt.title(f"ROC Curve ({name})")
     plt.legend()
-    plt.show()
+
+    plt.savefig(f"plots/ROC_curve_{name}.png")
