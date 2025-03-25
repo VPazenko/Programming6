@@ -169,3 +169,42 @@ def normalize_partition(df, num_col, mean, std):
     for column in num_col:
         df[column] = (df[column] - mean[column]) / std[column]
     return df
+
+
+def modelling_XGBoost_dask(log, df_combined, client):
+    X_train_dask, X_test_dask, y_train_dask, y_test_dask = preprocessing_train_test_dask(log, df_combined, client)
+    start_time = time.time()
+    # Convert Dask DataFrame to DMatrix format for XGBoost
+    dtrain_dask = xgb.dask.DaskDMatrix(client=client, data=X_train_dask, label=y_train_dask)
+    dtest_dask = xgb.dask.DaskDMatrix(client=client, data=X_test_dask, label=y_test_dask)
+
+    # Train the model using Dask
+    params = {
+        'objective': 'binary:logistic', 
+        'eval_metric': 'logloss', 
+        'use_label_encoder': False
+    }
+
+    model_dask = xgb.dask.train(client=client, params=params, dtrain=dtrain_dask, num_boost_round=100)
+    # Predict on the test set
+    y_pred_dask = xgb.dask.predict(client=client, model=model_dask, data=dtest_dask)
+
+    # Convert predictions to binary
+    y_pred_binary_dask = (y_pred_dask > 0.5).astype(int)
+
+    # Calculate metrics for Dask
+    accuracy_dask = accuracy_score(y_test_dask.compute(), y_pred_binary_dask)
+    precision_dask, recall_dask, f1_dask, _ = precision_recall_fscore_support(y_test_dask.compute(), y_pred_binary_dask, average='binary')
+    auc_roc_dask = roc_auc_score(y_test_dask.compute(), y_pred_dask)
+
+    model_time = time.time() - start_time
+    log.info(f"5. Dask modelling time: {model_time:.2f} seconds")
+
+
+    # Print metrics for Pandas
+    print(f"Accuracy: {accuracy_dask:.2f}")
+    print(f"Precision: {precision_dask:.2f}")
+    print(f"Recall: {recall_dask:.2f}")
+    print(f"F1-Score: {f1_dask:.2f}")
+    print(f"AUC-ROC: {auc_roc_dask:.2f}")
+    roc_curve(y_test_dask, y_pred_dask, auc_roc_dask, name='dask')
