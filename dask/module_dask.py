@@ -117,3 +117,55 @@ def data_exploration_dask(log, df_clin, df_exp):
     return df_combined, grouped_df
 
 
+def preprocessing_train_test_dask(log, df_combined, client):
+    # Start timer
+    start = time.time()
+
+    cat_columns = df_combined.loc[:, df_combined.dtypes == 'object'].columns
+    numerical_columns = df_combined.loc[:, df_combined.dtypes != 'object'].columns
+    numerical_columns = numerical_columns.drop('TumorSubtype')
+
+    #client = dask.distributed.Client()
+    # Prepare Dask DataFrame
+    df_dask = df_combined.repartition(npartitions=1)
+    #df_dask = dd.from_pandas(df_combined, npartitions=1)
+
+    # Split the data for Dask
+    X_dask = df_dask.drop(columns=['TumorSubtype'])
+    y_dask = df_dask['TumorSubtype']
+
+    categories_dict = {col: X_dask[col].compute().unique().tolist() for col in cat_columns}
+
+    for col in cat_columns:
+        X_dask[col] = X_dask[col].astype("category")
+        X_dask[col] = X_dask[col].cat.set_categories(categories_dict[col])
+
+    X_dask = dd.get_dummies(X_dask, columns=cat_columns, drop_first=True)
+
+    # Train-test split for Dask
+    X_train_dask, X_test_dask, y_train_dask, y_test_dask = train_test_split(X_dask, y_dask, test_size=0.25, random_state=42, shuffle=True)
+
+    #  Normalize the data
+    mean = X_train_dask[numerical_columns].mean().compute()
+    std = X_train_dask[numerical_columns].std().compute()
+    
+    X_train_dask_n = X_train_dask.map_partitions(normalize_partition, num_col=numerical_columns, mean=mean, std=std)
+    X_test_dask_n = X_test_dask.map_partitions(normalize_partition, num_col=numerical_columns, mean=mean, std=std)
+
+    X_train_dask_n.compute()
+    X_test_dask_n.compute()
+    y_train_dask = y_train_dask.repartition(npartitions=X_train_dask.npartitions)
+    y_test_dask = y_test_dask.repartition(npartitions=X_train_dask.npartitions)
+
+    # End timer
+    preprocess_time = time.time() - start
+
+    log.info(f"4. Dask preprocessing time: {preprocess_time:.2f} seconds")
+
+    return X_train_dask_n, X_test_dask_n, y_train_dask, y_test_dask
+
+
+def normalize_partition(df, num_col, mean, std):
+    for column in num_col:
+        df[column] = (df[column] - mean[column]) / std[column]
+    return df
