@@ -6,14 +6,12 @@ __version__ = 1.0
 import dask
 import time
 import gzip
-import os
 import xgboost as xgb
-import matplotlib.pyplot as plt
 import dask.dataframe as dd
 import pandas as pd
 
-from module import roc_curve, plot_values_distribution
-from sklearn.model_selection import train_test_split
+from module import plot_roc_curve, plot_values_distribution
+from dask_ml.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, roc_curve
 
 
@@ -31,7 +29,7 @@ def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="da
     df_clin = dd.from_delayed([delayed_df])
     # Load expression data
     headers = dd.read_csv(unzipped_file_path, skiprows=28, header=None, sep="\t").head(1).values.flatten()
-    df_exp = dd.read_csv(unzipped_file_path, skiprows=63, names=headers, blocksize="10MB", sep="\t")
+    df_exp = dd.read_csv(unzipped_file_path, skiprows=63, names=headers, blocksize="10MB", sep="\t", low_memory=False)
     # Memory Usage
     memory_clin = df_clin.memory_usage(deep=True).compute().sum() / (1024**2)  # Convert to MB
     memory_exp = df_exp.memory_usage(deep=True).compute().sum() / (1024**2)  # Convert to MB
@@ -44,7 +42,7 @@ def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="da
     log.info(f"2. Dask load time: {dask_time:.2f} seconds")
     log.info(f"2. Dask memory usage (clinical): {memory_clin:.2f} MB")
     log.info(f"2. Dask memory usage for the first partition (expression): {first_partition_size:.2f} MB")
-    log.info(f"2. Dask memory usage aproximatle computate (expression): {memory_exp:.2f} MB")
+    log.info(f"2. Dask memory usage approximately computed (expression): {memory_exp:.2f} MB")
 
     return df_clin, df_exp
 
@@ -82,16 +80,13 @@ def data_exploration_dask(log, df_clin, df_exp):
     
     df_exp = df_exp.set_index('!Sample_title')
 
-    # Вычисляем стандартное отклонение всех генов
+    # sort by std (max is first)
     std_series = df_exp.std(axis=1).compute()
-
-    # Получаем топ-10 наиболее вариативных генов
     top_genes = std_series.nlargest(10).index
     df_selected = df_exp.loc[top_genes.to_list(),:]
 
-    # Транспонируем результат (если данных не очень много)
-    df_transposed = df_selected.compute().T  # Транспонируем в Pandas
-    df_transposed = dd.from_pandas(df_transposed, npartitions=4)  # Конвертируем обратно в Dask
+    df_transposed = df_selected.compute().T  # Dask not support transpose operation
+    df_transposed = dd.from_pandas(df_transposed, npartitions=4)  # Convert back to dask
 
     df_clin = df_clin.set_index('title')
     df_combined = df_clin.merge(df_transposed, how='left', left_index=True, right_index=True)
@@ -117,7 +112,7 @@ def data_exploration_dask(log, df_clin, df_exp):
     return df_combined, grouped_df
 
 
-def preprocessing_train_test_dask(log, df_combined, client):
+def preprocessing_train_test_dask(log, df_combined):
     # Start timer
     start = time.time()
 
@@ -125,10 +120,8 @@ def preprocessing_train_test_dask(log, df_combined, client):
     numerical_columns = df_combined.loc[:, df_combined.dtypes != 'object'].columns
     numerical_columns = numerical_columns.drop('TumorSubtype')
 
-    #client = dask.distributed.Client()
     # Prepare Dask DataFrame
     df_dask = df_combined.repartition(npartitions=1)
-    #df_dask = dd.from_pandas(df_combined, npartitions=1)
 
     # Split the data for Dask
     X_dask = df_dask.drop(columns=['TumorSubtype'])
@@ -160,7 +153,7 @@ def preprocessing_train_test_dask(log, df_combined, client):
     # End timer
     preprocess_time = time.time() - start
 
-    log.info(f"4. Dask preprocessing time: {preprocess_time:.2f} seconds")
+    log.info(f"4. Dask preprocessing (train/test) time: {preprocess_time:.2f} seconds")
 
     return X_train_dask_n, X_test_dask_n, y_train_dask, y_test_dask
 
@@ -174,6 +167,7 @@ def normalize_partition(df, num_col, mean, std):
 def modelling_XGBoost_dask(log, df_combined, client):
     X_train_dask, X_test_dask, y_train_dask, y_test_dask = preprocessing_train_test_dask(log, df_combined, client)
     start_time = time.time()
+
     # Convert Dask DataFrame to DMatrix format for XGBoost
     dtrain_dask = xgb.dask.DaskDMatrix(client=client, data=X_train_dask, label=y_train_dask)
     dtest_dask = xgb.dask.DaskDMatrix(client=client, data=X_test_dask, label=y_test_dask)
@@ -184,7 +178,6 @@ def modelling_XGBoost_dask(log, df_combined, client):
         'eval_metric': 'logloss', 
         'use_label_encoder': False
     }
-
     model_dask = xgb.dask.train(client=client, params=params, dtrain=dtrain_dask, num_boost_round=100)
     # Predict on the test set
     y_pred_dask = xgb.dask.predict(client=client, model=model_dask, data=dtest_dask)
@@ -199,12 +192,10 @@ def modelling_XGBoost_dask(log, df_combined, client):
 
     model_time = time.time() - start_time
     log.info(f"5. Dask modelling time: {model_time:.2f} seconds")
+    log.info(f"Model accuracy: {accuracy_dask:.2f}")
+    log.info(f"Model precision: {precision_dask:.2f}")
+    log.info(f"Model recall: {recall_dask:.2f}")
+    log.info(f"Model F1-score: {f1_dask:.2f}")
+    log.info(f"Model AUC-ROC: {auc_roc_dask:.2f}")
 
-
-    # Print metrics for Pandas
-    print(f"Accuracy: {accuracy_dask:.2f}")
-    print(f"Precision: {precision_dask:.2f}")
-    print(f"Recall: {recall_dask:.2f}")
-    print(f"F1-Score: {f1_dask:.2f}")
-    print(f"AUC-ROC: {auc_roc_dask:.2f}")
-    roc_curve(y_test_dask, y_pred_dask, auc_roc_dask, name='dask')
+    plot_roc_curve(y_test_dask, y_pred_dask, auc_roc_dask, name='dask')

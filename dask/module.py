@@ -42,7 +42,6 @@ def initial_preprocessing_pd(log, df_clin):
         if len(list(df_clin[name].value_counts())) == 1:
             remove_list.append(name)
     # Delete all these columns
-    # print(remove_list)
     for  name in remove_list:
         del df_clin[name]
     # These columns are duplicates with 'title'
@@ -50,6 +49,7 @@ def initial_preprocessing_pd(log, df_clin):
     del df_clin['CEL.file']
 
     df_clin.iloc[3,4] = round(df_clin[df_clin['characteristics.tag.gender']=='M']['characteristics.tag.tumor.size.maximumdiameter'].mean(), 2)
+    # Make all values in the columns lower case
     for col in ['characteristics.tag.stage.primary.tumor', 'characteristics.tag.stage.nodes', 'characteristics.tag.stage.mets']:
         df_clin.loc[:,col] = df_clin.loc[:,col].str.lower()
     # End timer
@@ -80,7 +80,6 @@ def data_exploration_pd(log, df_clin, df_exp):
 
     last_10_columns = df_combined.columns[-11:-1]
     grouped_df = df_combined.groupby("TumorSubtype")[last_10_columns].mean().reset_index()
-    # grouped_df.head()
 
     plot_values_distribution(df_combined, "TumorSubtype", name='pandas')
     # End timer
@@ -91,9 +90,10 @@ def data_exploration_pd(log, df_clin, df_exp):
 
 
 def plot_values_distribution(df, column, name='pandas'):
+    plt.figure(figsize=(6, 4))
     if not os.path.exists("plots"):
         os.makedirs("plots")
-    counts = df[column].value_counts() #.compute()
+    counts = df[column].value_counts()
     counts.plot(kind="bar", color="skyblue", edgecolor="black")
     plt.xlabel(column)
     plt.ylabel("Count")
@@ -130,7 +130,8 @@ def preprocessing_train_test_pd(log, df_combined):
     return X_train, X_test, y_train, y_test
 
 
-def modelling_XGBoost_pd(X_train, X_test, y_train, y_test):
+def modelling_XGBoost_pd(log, df_combined):
+    X_train, X_test, y_train, y_test = preprocessing_train_test_pd(log, df_combined)
     # start timer
     start_time = time.time()
     # Convert Pandas data to DMatrix format for XGBoost
@@ -139,7 +140,7 @@ def modelling_XGBoost_pd(X_train, X_test, y_train, y_test):
     params = {
         'objective': 'binary:logistic', 
         'eval_metric': 'logloss', 
-        'use_label_encoder': False
+        #'use_label_encoder': False
     }
     # Train the model
     model_pandas = xgb.train(params=params, dtrain=dtrain, num_boost_round=100)
@@ -153,20 +154,20 @@ def modelling_XGBoost_pd(X_train, X_test, y_train, y_test):
     precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred_binary_pandas, average='binary')
     auc_roc_pandas = roc_auc_score(y_test, y_pred_pandas)
 
-    end_time = time.time()
-    print(f"Training time (Pandas): {end_time - start_time:.2f} seconds")
+    model_time = time.time() - start_time
+    log.info(f"5. Pandas modelling time: {model_time:.2f} seconds")
 
-    # Print metrics for Pandas
-    print(f"Accuracy: {accuracy_pandas:.2f}")
-    print(f"Precision: {precision:.2f}")
-    print(f"Recall: {recall:.2f}")
-    print(f"F1-Score: {f1:.2f}")
-    print(f"AUC-ROC: {auc_roc_pandas:.2f}")
-    roc_curve(y_test, y_pred_pandas, auc_roc_pandas, name='pandas')
+    log.info(f"Model accuracy: {accuracy_pandas:.2f}")
+    log.info(f"Model precision: {precision:.2f}")
+    log.info(f"Model recall: {recall:.2f}")
+    log.info(f"Model F1-score: {f1:.2f}")
+    log.info(f"Model AUC-ROC: {auc_roc_pandas:.2f}")
+
+    plot_roc_curve(y_test, y_pred_pandas, auc_roc_pandas, name='pandas')
 
 
-def roc_curve(y_test, y_pred, auc_score, name='pandas'):
-
+def plot_roc_curve(y_test, y_pred, auc_score, name='pandas'):
+    plt.figure(figsize=(8, 6))
     fpr, tpr, _ = roc_curve(y_test, y_pred)
     plt.plot(fpr, tpr, label=f"AUC = {auc_score:.3f}")
     plt.plot([0, 1], [0, 1], linestyle="--", color="gray")  # 50% probability line
