@@ -140,7 +140,6 @@ def modelling_XGBoost_pd(log, df_combined):
     params = {
         'objective': 'binary:logistic', 
         'eval_metric': 'logloss', 
-        #'use_label_encoder': False
     }
     # Train the model
     model_pandas = xgb.train(params=params, dtrain=dtrain, num_boost_round=100)

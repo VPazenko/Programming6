@@ -165,7 +165,7 @@ def normalize_partition(df, num_col, mean, std):
 
 
 def modelling_XGBoost_dask(log, df_combined, client):
-    X_train_dask, X_test_dask, y_train_dask, y_test_dask = preprocessing_train_test_dask(log, df_combined, client)
+    X_train_dask, X_test_dask, y_train_dask, y_test_dask = preprocessing_train_test_dask(log, df_combined)
     start_time = time.time()
 
     # Convert Dask DataFrame to DMatrix format for XGBoost
@@ -176,7 +176,6 @@ def modelling_XGBoost_dask(log, df_combined, client):
     params = {
         'objective': 'binary:logistic', 
         'eval_metric': 'logloss', 
-        'use_label_encoder': False
     }
     model_dask = xgb.dask.train(client=client, params=params, dtrain=dtrain_dask, num_boost_round=100)
     # Predict on the test set
