@@ -10,13 +10,11 @@ import os
 import xgboost as xgb
 import matplotlib.pyplot as plt
 import dask.dataframe as dd
+import pandas as pd
 
+from module import roc_curve, plot_values_distribution
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, roc_curve
-
-
-
-
 
 
 def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="data/GSE58661_series_matrix.txt.gz"):
@@ -49,3 +47,35 @@ def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="da
     log.info(f"2. Dask memory usage aproximatle computate (expression): {memory_exp:.2f} MB")
 
     return df_clin, df_exp
+
+
+def initial_preprocessing_dask(log, df_clin):
+    # Start timer
+    start = time.time()
+       
+    # Remove columns with only one unique value
+    unique_counts = df_clin.nunique().compute()
+    remove_list = unique_counts[unique_counts == 1].index.tolist()
+    df_clin = df_clin.drop(columns=remove_list, errors='ignore')
+    
+    # Remove specific columns
+    df_clin = df_clin.drop(columns=['sample.name', 'CEL.file'], errors='ignore')
+    
+    # Replace missing value in a specific row
+    mean_value = df_clin[df_clin['characteristics.tag.gender'] == 'M']['characteristics.tag.tumor.size.maximumdiameter'].mean().compute()
+    df_clin['characteristics.tag.tumor.size.maximumdiameter'] = df_clin['characteristics.tag.tumor.size.maximumdiameter'].fillna(round(mean_value, 2))
+    
+    # Convert specific columns to lowercase
+    for col in ['characteristics.tag.stage.primary.tumor', 'characteristics.tag.stage.nodes', 'characteristics.tag.stage.mets']:
+        df_clin[col] = df_clin[col].str.lower()
+    
+    # End timer
+    preprocess_time = time.time() - start
+    log.info(f"2. Dask preprocessing time: {preprocess_time:.2f} seconds")
+    
+    return df_clin
+
+
+
+
+
