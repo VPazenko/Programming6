@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+'''
+These module provide functionality for main preproceessing of the data and modelling xgboost with Dask library.
+'''
+
 __author__ = "V.Pazenko"
 __version__ = 1.0
 
@@ -9,21 +13,32 @@ import gzip
 import xgboost as xgb
 import dask.dataframe as dd
 import pandas as pd
-
+# My modules
 from module import plot_roc_curve, plot_values_distribution
+
 from dask_ml.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, roc_curve
 
 
 def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="data/GSE58661_series_matrix.txt.gz"):
+    '''
+    Input: 1. log = loger
+           2. metadata = path to the metadata file
+           3. expression_data = path to the expression data file
+
+    Function loads these 2 files into Dask DataFrame and calculate time and memory usage.
+
+    Output: 1. df_clin = dd.DataFrame with clinical data
+            2. df_exp = dd.DataFrame with expression data
+    '''
     # Start timer
     start = time.time()
     # Warning gzip compression does not support breaking apart files 
     unzipped_file_path = expression_data.replace(".gz", "")
     with gzip.open(expression_data, 'rb') as f_in, open(unzipped_file_path, 'wb') as f_out:
         f_out.write(f_in.read())  # Unzip metadata
-    
-    end_unzip = time.time()
+
+    # end_unzip = time.time()
     # Load metadata
     delayed_df = dask.delayed(pd.read_excel)(metadata)
     df_clin = dd.from_delayed([delayed_df])
@@ -36,48 +51,68 @@ def load_data_dask(log, metadata='data/Lung3.metadata.xlsx', expression_data="da
     first_partition_size = df_exp.partitions[0].memory_usage(deep=True).sum().compute()/ (1024**2)
 
     # End timer
-    dask_time = time.time() - end_unzip
+    dask_time = time.time() - start  # end_unzip
 
-    log.info(f"2. Unzip time: {end_unzip - start:.2f} seconds")
-    log.info(f"2. Dask load time: {dask_time:.2f} seconds")
-    log.info(f"2. Dask memory usage (clinical): {memory_clin:.2f} MB")
-    log.info(f"2. Dask memory usage for the first partition (expression): {first_partition_size:.2f} MB")
-    log.info(f"2. Dask memory usage approximately computed (expression): {memory_exp:.2f} MB")
+    #log.info(f"1. Unzip time: {end_unzip - start:.2f} seconds")
+    log.info(f"1. Dask load time: {dask_time:.2f} seconds")
+    log.info(f"1. Dask memory usage (clinical): {memory_clin:.2f} MB")
+    log.info(f"1. Dask memory usage for the first partition (expression): {first_partition_size:.2f} MB")
+    log.info(f"1. Dask memory usage approximately computed (expression): {memory_exp:.2f} MB")
 
     return df_clin, df_exp
 
 
 def initial_preprocessing_dask(log, df_clin):
+    '''
+    Input: 1. log = loger
+           2. df_clin = dd.DataFrame with clinical data
+
+    Function preprocess the data. Remove columns with only one unique value, remove duplicates, fill in missing values.
+
+    Output: 1. df_clin = processed dd.DataFrame with clinical data
+    '''
     # Start timer
     start = time.time()
-       
+
     # Remove columns with only one unique value
     unique_counts = df_clin.nunique().compute()
     remove_list = unique_counts[unique_counts == 1].index.tolist()
     df_clin = df_clin.drop(columns=remove_list, errors='ignore')
-    
+
     # Remove specific columns
     df_clin = df_clin.drop(columns=['sample.name', 'CEL.file'], errors='ignore')
-    
+
     # Replace missing value in a specific row
     mean_value = df_clin[df_clin['characteristics.tag.gender'] == 'M']['characteristics.tag.tumor.size.maximumdiameter'].mean().compute()
     df_clin['characteristics.tag.tumor.size.maximumdiameter'] = df_clin['characteristics.tag.tumor.size.maximumdiameter'].fillna(round(mean_value, 2))
-    
+
     # Convert specific columns to lowercase
     for col in ['characteristics.tag.stage.primary.tumor', 'characteristics.tag.stage.nodes', 'characteristics.tag.stage.mets']:
         df_clin[col] = df_clin[col].str.lower()
-    
+
     # End timer
     preprocess_time = time.time() - start
     log.info(f"2. Dask preprocessing time: {preprocess_time:.2f} seconds")
-    
+
     return df_clin
 
 
 def data_exploration_dask(log, df_clin, df_exp):
+    '''
+    Input: 1. log = loger
+           2. df_clin = dd.DataFrame.DataFrame with clinical data
+           3. df_exp = dd.DataFrame with expression data
+
+    Function select top 10 genes with the highest standard deviation and merge them with clinical data.
+    Function also create a new column "TumorSubtype" (y for ML) based on the "characteristics.tag.histology" column.
+    Also create a distribution boxplot for the "TumorSubtype" column.
+
+    Output: 1. df_combined = dd.DataFrame with clinical data and top 10 genes
+            2. grouped_df = dd.DataFrame with the average expression of selected genes for each subtype
+    '''
     # Start timer
     start = time.time()
-    
+
     df_exp = df_exp.set_index('!Sample_title')
 
     # sort by std (max is first)
@@ -90,29 +125,37 @@ def data_exploration_dask(log, df_clin, df_exp):
 
     df_clin = df_clin.set_index('title')
     df_combined = df_clin.merge(df_transposed, how='left', left_index=True, right_index=True)
-    
+
     # Create TumorSubtype column
     df_combined['TumorSubtype'] = df_combined['characteristics.tag.histology'].str.contains("Squamous", case=False, na=False).astype(int)
     df_combined = df_combined.drop(columns=['characteristics.tag.histology'], errors='ignore')
-    
+
     # Reduce number of primary stage categories
     df_combined['characteristics.tag.stage.primary.tumor'] = df_combined['characteristics.tag.stage.primary.tumor'].str[:3]
-    
+
     # Compute grouped mean values
     last_10_columns = df_combined.columns[-11:-1]
     grouped_df = df_combined.groupby("TumorSubtype")[last_10_columns].mean().reset_index()
-    
+
     # Plot distribution with reduced memory usage
     plot_values_distribution(df_combined.loc[:,["TumorSubtype"]].compute(), "TumorSubtype", name='dask')
-    
+
     # End timer
     exploration_time = time.time() - start
     log.info(f"3. Dask data exploration time: {exploration_time:.2f} seconds")
-    
+
     return df_combined, grouped_df
 
 
 def preprocessing_train_test_dask(log, df_combined):
+    '''
+    Input: 1. log = loger
+           2. df_combined = dd.DataFrame with clinical data and top 10 genes
+
+    Function will preprocess (normalize) the data for train/test split and make this split.
+
+    Output: X_train_dask_n, X_test_dask_n, y_train_dask, y_test_dask train/test split result
+    '''
     # Start timer
     start = time.time()
 
@@ -136,15 +179,15 @@ def preprocessing_train_test_dask(log, df_combined):
     X_dask = dd.get_dummies(X_dask, columns=cat_columns, drop_first=True)
 
     # Train-test split for Dask
-    X_train_dask, X_test_dask, y_train_dask, y_test_dask = train_test_split(X_dask, y_dask, test_size=0.25, random_state=42, shuffle=True)
+    X_train_dask, X_test_dask, y_train_dask, y_test_dask = train_test_split(X_dask, y_dask, test_size=0.25, random_state=42)
 
     #  Normalize the data
     mean = X_train_dask[numerical_columns].mean().compute()
     std = X_train_dask[numerical_columns].std().compute()
-    
+
     X_train_dask_n = X_train_dask.map_partitions(normalize_partition, num_col=numerical_columns, mean=mean, std=std)
     X_test_dask_n = X_test_dask.map_partitions(normalize_partition, num_col=numerical_columns, mean=mean, std=std)
-
+    # Calculate normalization (if not, case some errors in the next step)
     X_train_dask_n.compute()
     X_test_dask_n.compute()
     y_train_dask = y_train_dask.repartition(npartitions=X_train_dask.npartitions)
@@ -159,12 +202,30 @@ def preprocessing_train_test_dask(log, df_combined):
 
 
 def normalize_partition(df, num_col, mean, std):
+    '''
+    Input: 1. df - dd.DataFrame
+           2. num_col = list of numerical columns
+           3. mean - dd.DataFrame with mean values for each num_column
+           4. std - dd.DataFrame with std values for each num_column
+
+    Auxiliary function for data normalisation
+
+    Output: df - dd.DataFrame with normalized data
+    '''
     for column in num_col:
         df[column] = (df[column] - mean[column]) / std[column]
     return df
 
 
 def modelling_XGBoost_dask(log, df_combined, client):
+    '''
+    Input: 1. log = loger
+           2. df_combined = dd.DataFrame with clinical data and top 10 genes
+
+    Function will train and implement XGBoost model on the data.
+
+    Output: model metrics, roc_curve.png
+    '''
     X_train_dask, X_test_dask, y_train_dask, y_test_dask = preprocessing_train_test_dask(log, df_combined)
     start_time = time.time()
 
@@ -191,10 +252,10 @@ def modelling_XGBoost_dask(log, df_combined, client):
 
     model_time = time.time() - start_time
     log.info(f"5. Dask modelling time: {model_time:.2f} seconds")
-    log.info(f"Model accuracy: {accuracy_dask:.2f}")
-    log.info(f"Model precision: {precision_dask:.2f}")
-    log.info(f"Model recall: {recall_dask:.2f}")
-    log.info(f"Model F1-score: {f1_dask:.2f}")
-    log.info(f"Model AUC-ROC: {auc_roc_dask:.2f}")
+    log.info(f"5. Dask Model accuracy: {accuracy_dask:.2f}")
+    log.info(f"5. Dask Model precision: {precision_dask:.2f}")
+    log.info(f"5. Dask Model recall: {recall_dask:.2f}")
+    log.info(f"5. Dask Model F1-score: {f1_dask:.2f}")
+    log.info(f"5. Dask Model AUC-ROC: {auc_roc_dask:.2f}")
 
     plot_roc_curve(y_test_dask, y_pred_dask, auc_roc_dask, name='dask')
