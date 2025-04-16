@@ -1,1 +1,2 @@
-# Programming6
+# Programming_6
+This repository consists of three assignments
