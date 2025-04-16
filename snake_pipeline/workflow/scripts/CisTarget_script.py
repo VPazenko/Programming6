@@ -7,10 +7,10 @@ import pandas as pd
 import numpy as np
 
 import logging
-# Настройка логирования
+# logging configuration
 logging.basicConfig(filename=snakemake.log[0], level=logging.DEBUG)
 
-# Логируем события
+# logging messages
 logging.debug("Debugging message")
 logging.info("Informational message")
 logging.warning("Warning message")
@@ -78,8 +78,6 @@ def add_cis_target_column(eQTL, cis_gene='cis_eQTL_gene_name', trans_gene='trans
 
     full_df = full_df.iloc[:,[3,1]]
 
-    
-    
     # Combine 2 dataframes (and drop all duplicates)
     eQTL_combined = eQTL.merge(full_df.drop_duplicates().dropna(), left_on=[cis_gene, trans_gene],\
                                right_on=["gene_name", "Gene_score_more_th"], how="left")
@@ -98,7 +96,7 @@ def add_cis_target_column(eQTL, cis_gene='cis_eQTL_gene_name', trans_gene='trans
 
 eQTL = pd.read_csv(snakemake.input[0], sep="\t")
 
-eqtl_cistarget = add_cis_target_column(eQTL, cisTarget_db_dir=snakemake.input[1], 
+eqtl_cistarget = add_cis_target_column(eQTL, cisTarget_db_dir=snakemake.input[1],
                                        motifs_db_dir=snakemake.input[2])
 
 eqtl_cistarget.to_csv(snakemake.output[0], index=False)

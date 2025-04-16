@@ -27,25 +27,23 @@ rule add_TN_data:
 rule preprocess_data:
     input:
         lambda wildcards: list(chain(
-            [config['data'] + 'full_df.tsv'],  # Первичный файл
-            config.get(f'{wildcards.db}_db_name', [])  # Динамические файлы для конкретной базы данных
+            [config['data'] + 'full_df.tsv'],
+            config.get(f'{wildcards.db}_db_name', [])
         ))
     output:
         config['inter_data'] + "{db}_output.csv"
     log:
-        "logs/{db}_output.log"  # Логирование в файл
+        "logs/{db}_output.log"
     params:
         script = lambda wildcards: wildcards.db + "_script.py"
     script:
         "scripts/{params.script}"
 
 
-
-
 # Rule to combine all preprocesses data
 rule combine_results_split:
     input:
-        expand(config['inter_data'] + "{db}_output.csv", db=config['valuable_db'])  # Входные файлы всех стадий
+        expand(config['inter_data'] + "{db}_output.csv", db=config['valuable_db'])  # all input files
     output:
         train = config['inter_data'] + 'train_data.csv', 
         test = config['inter_data'] + 'test_data.csv'
@@ -65,7 +63,6 @@ rule train_model:
         config['output_dir'] + "benchmarks/train_{model}.txt"
     script:
         "scripts/train_{wildcards.model}.py"
-
 
 
 # Rule to evaluate each model 'probably'
