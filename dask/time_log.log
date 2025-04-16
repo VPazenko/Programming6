@@ -1,0 +1,31 @@
+2025-04-16 16:40:45,363 - 1. Pandas load time: 1.12 seconds
+2025-04-16 16:40:45,363 - 1. Pandas memory usage (clinical): 0.08 MB
+2025-04-16 16:40:45,363 - 1. Pandas memory usage (expression): 45.54 MB
+2025-04-16 16:40:45,369 - 2. Pandas preprocessing time: 0.01 seconds
+2025-04-16 16:40:45,848 - 3. Pandas data exploration time: 0.48 seconds
+2025-04-16 16:40:45,862 - 4. Pandas preprocessing (train/test) time: 0.01 seconds
+2025-04-16 16:40:45,981 - 5. Pandas modelling time: 0.12 seconds
+2025-04-16 16:40:45,981 - 5. Pandas Model accuracy: 0.83
+2025-04-16 16:40:45,982 - 5. Pandas Model precision: 0.78
+2025-04-16 16:40:45,982 - 5. Pandas Model recall: 0.78
+2025-04-16 16:40:45,982 - 5. Pandas Model F1-score: 0.78
+2025-04-16 16:40:45,982 - 5. Pandas Model AUC-ROC: 0.84
+2025-04-16 16:40:46,153 - 6. Total time Pandas (measured): 1.91 seconds
+2025-04-16 16:40:47,889 - 1. Dask load time: 1.74 seconds
+2025-04-16 16:40:47,889 - 1. Dask memory usage (clinical): 0.08 MB
+2025-04-16 16:40:47,889 - 1. Dask memory usage for the first partition (expression): 7.49 MB
+2025-04-16 16:40:47,889 - 1. Dask memory usage approximately computed (expression): 45.54 MB
+2025-04-16 16:40:47,999 - 2. Dask preprocessing time: 0.11 seconds
+2025-04-16 16:40:49,722 - 3. Dask data exploration time: 1.72 seconds
+2025-04-16 16:40:57,159 - 4. Dask preprocessing (train/test) time: 3.18 seconds
+2025-04-16 16:40:57,159 - Windows is not officially supported for dask/xgboost, contribution are welcomed.
+2025-04-16 16:40:57,336 - Windows is not officially supported for dask/xgboost, contribution are welcomed.
+2025-04-16 16:40:57,844 - Windows is not officially supported for dask/xgboost, contribution are welcomed.
+2025-04-16 16:40:57,927 - Windows is not officially supported for dask/xgboost, contribution are welcomed.
+2025-04-16 16:40:58,688 - 5. Dask modelling time: 1.53 seconds
+2025-04-16 16:40:58,689 - 5. Dask Model accuracy: 0.85
+2025-04-16 16:40:58,689 - 5. Dask Model precision: 0.75
+2025-04-16 16:40:58,689 - 5. Dask Model recall: 0.90
+2025-04-16 16:40:58,689 - 5. Dask Model F1-score: 0.82
+2025-04-16 16:40:58,689 - 5. Dask Model AUC-ROC: 0.89
+2025-04-16 16:41:00,150 - 6. Total time Dask (measured): 14.00 seconds
