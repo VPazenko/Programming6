@@ -141,7 +141,8 @@ def create_docx_report(log_file, start_time, grouped_df, docx_name="Report.docx"
     roc_dask = "./plots/ROC_curve_dask.png"
     cell1.paragraphs[0].add_run().add_picture(roc_pd, width=Inches(3))
     cell2.paragraphs[0].add_run().add_picture(roc_dask, width=Inches(3))
-
+    text_module.add_text_to_doc(doc, 'concl')
+    
     # Go to the New page
     doc.add_page_break()
     doc.add_paragraph("Group patients by clinical variables and compute the average expression of selected genes")
@@ -166,5 +167,6 @@ def create_docx_report(log_file, start_time, grouped_df, docx_name="Report.docx"
                 table.cell(i + 1, j).text = str(int(value))
             else:
                 table.cell(i + 1, j).text = str(value)
+
     # Save final docx file
     doc.save(docx_name)
